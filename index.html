@@ -1,0 +1,1309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>The Dragon's Dungeon — Fraction Quest</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+/* ── RESET & BASE ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { width: 100%; height: 100%; background: #000; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+
+/* ── GAME CONTAINER ── */
+#G {
+  position: relative;
+  width: 800px; height: 500px;
+  overflow: hidden;
+  font-family: 'Press Start 2P', monospace;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+/* ── CANVASES ── */
+canvas {
+  position: absolute; top: 0; left: 0;
+  width: 800px; height: 500px;
+  image-rendering: pixelated;
+  display: block;
+}
+#cBg  { z-index: 1; }
+#cSp  { z-index: 2; pointer-events: none; }
+#cFx  { z-index: 3; pointer-events: none; }
+
+/* ── HUD ── */
+#hud {
+  position: absolute; top: 0; left: 0; width: 100%;
+  z-index: 10; pointer-events: none; display: none;
+}
+#hudInner {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0,0,0,0.8);
+  border-bottom: 2px solid #333;
+}
+#hudSword { font-size: 18px; }
+.gSlot {
+  width: 26px; height: 26px;
+  border: 2px solid #333; background: #080808;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; transition: border-color 0.4s, background 0.4s;
+}
+.gSlot.lit { border-color: #FFD700; background: #191000; }
+#hudRight {
+  position: absolute; right: 10px; top: 6px;
+  text-align: right; pointer-events: none;
+}
+#hudLevel { font-size: 7px; color: #888; line-height: 2; }
+
+/* ── DIALOGUE BOX ── */
+#dlg {
+  position: absolute; bottom: 0; left: 0; width: 100%;
+  z-index: 20; display: none;
+  background: rgba(12, 6, 30, 0.97);
+  border-top: 3px solid #555;
+  padding: 12px 14px 12px 112px;
+  min-height: 120px; cursor: pointer;
+}
+#dlgFace {
+  position: absolute; left: 8px; bottom: 8px;
+  width: 94px; height: 94px;
+  border: 2px solid #555; background: #06030f;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 50px;
+}
+#dlgName { font-size: 8px; color: #FFD700; margin-bottom: 8px; letter-spacing: 1px; }
+#dlgText { font-size: 10px; color: #eee; line-height: 2.4; min-height: 44px; }
+#dlgNext {
+  position: absolute; bottom: 10px; right: 14px;
+  font-size: 9px; color: #FFD700;
+  animation: blink 0.9s step-end infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ── QUESTION BOX ── */
+#qbox {
+  position: absolute; bottom: 0; left: 0; width: 100%;
+  z-index: 20; display: none;
+  background: rgba(8, 4, 20, 0.98);
+  border-top: 3px solid #444;
+  padding: 10px 12px 10px 104px;
+  min-height: 170px;
+}
+#qFace {
+  position: absolute; left: 8px; bottom: 8px;
+  width: 86px; height: 86px;
+  border: 2px solid #cc2200; background: #0f0000;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 44px;
+}
+#qTop { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+#qEnemyName { font-size: 8px; color: #FF6655; letter-spacing: 1px; }
+.qDiff {
+  font-size: 7px; padding: 2px 8px;
+  border: 1px solid; letter-spacing: 1px;
+  border-radius: 2px;
+}
+.qDiff.easy   { color: #00FF88; border-color: #00FF88; }
+.qDiff.medium { color: #FFAA00; border-color: #FFAA00; }
+.qDiff.hard   { color: #FF4444; border-color: #FF4444; }
+#qText { font-size: 11px; color: #fff; line-height: 2.4; margin-bottom: 12px; }
+#qOpts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+/* Answer buttons — very explicit states */
+.qBtn {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  background: #0e0626;
+  border: 2px solid #444;
+  color: #bbb;
+  padding: 8px 6px;
+  min-height: 40px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; line-height: 1.8;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  /* prevent text selection on click */
+  user-select: none; -webkit-user-select: none;
+}
+.qBtn:hover:not([disabled]) {
+  background: #1e0e46;
+  border-color: #FFD700;
+  color: #FFD700;
+}
+.qBtn:active:not([disabled]) { transform: scale(0.97); }
+.qBtn[disabled] { cursor: default; opacity: 0.65; transform: none; }
+.qBtn.correct {
+  background: #002800 !important;
+  border-color: #00FF00 !important;
+  color: #00FF88 !important;
+  cursor: default !important;
+  opacity: 1 !important;
+}
+.qBtn.wrong {
+  background: #200000 !important;
+  border-color: #880000 !important;
+  color: #FF4444 !important;
+  cursor: default !important;
+  opacity: 1 !important;
+  text-decoration: line-through;
+}
+#qFb { font-size: 9px; margin-top: 8px; min-height: 16px; letter-spacing: 0.5px; }
+
+/* ── STACKED FRACTION ── */
+.F {
+  display: inline-flex; flex-direction: column;
+  align-items: center; vertical-align: middle;
+  margin: 0 10px; line-height: 1.2;
+  color: #FFD700;
+}
+.F .n { border-bottom: 2px solid #FFD700; padding: 2px 8px; min-width: 26px; text-align: center; font-size: 12px; }
+.F .d { padding: 2px 8px; min-width: 26px; text-align: center; font-size: 12px; }
+/* In answer buttons, fractions inherit colour */
+.qBtn .F { color: inherit; }
+.qBtn .F .n { border-bottom-color: currentColor; }
+
+/* ── TITLE SCREEN ── */
+#sTit {
+  position: absolute; inset: 0; z-index: 80;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #08060f;
+}
+#sTit canvas { position: absolute; inset: 0; }
+.titContent { position: relative; z-index: 5; text-align: center; }
+.titSub  { font-size: 10px; color: #777; letter-spacing: 3px; margin-bottom: 6px; }
+.titMain { font-size: 22px; color: #FFD700; text-shadow: 3px 3px #880000, 5px 5px #000; letter-spacing: 2px; margin-bottom: 2px; }
+.titRed  { font-size: 30px; color: #FF3333; text-shadow: 3px 3px #000; letter-spacing: 2px; margin-bottom: 8px; }
+.titTag  { font-size: 7px; color: #555; letter-spacing: 2px; margin-bottom: 22px; }
+.titGems { font-size: 22px; letter-spacing: 8px; margin-bottom: 18px; }
+.titBtn  {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px; color: #FF5555;
+  background: transparent; border: none;
+  margin: 8px 0; cursor: pointer; letter-spacing: 1px;
+  display: block; width: 100%;
+  transition: color 0.1s;
+}
+.titBtn::before { content: '▶ '; }
+.titBtn:hover { color: #FFD700; }
+.titCopy { font-size: 6px; color: #333; margin-top: 18px; }
+
+/* ── LEVEL INTRO SCREEN ── */
+#sIntro {
+  position: absolute; inset: 0; z-index: 80;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+}
+#sIntro canvas { position: absolute; inset: 0; }
+.liContent { position: relative; z-index: 5; text-align: center; padding: 20px; max-width: 560px; }
+.liNum   { font-size: 9px; color: #888; letter-spacing: 2px; margin-bottom: 8px; }
+.liName  { font-size: 15px; margin-bottom: 10px; text-shadow: 2px 2px #000; }
+.liTopic { font-size: 11px; margin-bottom: 10px; }
+.liDesc  { font-size: 9px; color: #bbb; line-height: 2.5; margin-bottom: 22px; }
+.liBtn   {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px; color: #FF5555; background: #000;
+  border: 2px solid #FF5555; padding: 10px 26px;
+  cursor: pointer; transition: all 0.1s;
+}
+.liBtn:hover  { background: #FF5555; color: #000; }
+.liBtn:active { transform: scale(0.97); }
+
+/* ── WIN SCREEN ── */
+#sWin {
+  position: absolute; inset: 0; z-index: 90;
+  display: none; flex-direction: column; align-items: center; justify-content: center;
+  background: #060410;
+}
+#sWin canvas { position: absolute; inset: 0; }
+.winContent { position: relative; z-index: 5; text-align: center; }
+.winTitle { font-size: 14px; color: #FFD700; text-shadow: 3px 3px #000; margin-bottom: 8px; }
+.winSub   { font-size: 7px; color: #999; line-height: 2.5; margin-bottom: 14px; }
+.winGems  { font-size: 28px; letter-spacing: 10px; margin-bottom: 14px; }
+.winScore { font-size: 8px; color: #FFD700; margin-bottom: 16px; }
+.winBtn   {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 9px; background: #000;
+  border: 2px solid #FFD700; color: #FFD700;
+  padding: 10px 22px; cursor: pointer; transition: all 0.1s;
+}
+.winBtn:hover  { background: #FFD700; color: #000; }
+.winBtn:active { transform: scale(0.97); }
+
+/* ── FADE OVERLAY ── */
+#fade {
+  position: absolute; inset: 0; background: #000;
+  z-index: 200; opacity: 0; pointer-events: none;
+  transition: opacity 0.35s;
+}
+#fade.in { opacity: 1; }
+
+/* ── GEM COLLECTED BANNER ── */
+#gemBanner {
+  position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+  z-index: 30; display: none;
+  background: rgba(0,0,0,0.92);
+  border: 2px solid #FFD700;
+  padding: 10px 20px;
+  font-size: 10px; color: #FFD700;
+  white-space: nowrap;
+  animation: none;
+}
+@keyframes bannerIn { from{opacity:0;top:80px} to{opacity:1;top:50px} }
+@keyframes bannerOut { from{opacity:1} to{opacity:0} }
+
+/* ── RESPONSIVE SCALE ── */
+@media (max-width: 820px)  { #G { transform: scale(0.92); transform-origin: center center; } }
+@media (max-width: 700px)  { #G { transform: scale(0.76); transform-origin: top center; } }
+@media (max-height: 520px) { #G { transform: scale(0.85); transform-origin: top center; } }
+</style>
+</head>
+<body>
+<div id="G">
+
+  <!-- CANVASES (z-index 1,2,3) -->
+  <canvas id="cBg" width="800" height="500"></canvas>
+  <canvas id="cSp" width="800" height="500"></canvas>
+  <canvas id="cFx" width="800" height="500"></canvas>
+
+  <!-- HUD (z-index 10) -->
+  <div id="hud">
+    <div id="hudInner">
+      <div id="hudSword">🗡️</div>
+      <div class="gSlot" id="g0"></div>
+      <div class="gSlot" id="g1"></div>
+      <div class="gSlot" id="g2"></div>
+      <div class="gSlot" id="g3"></div>
+    </div>
+    <div id="hudRight"><div id="hudLevel"></div></div>
+  </div>
+
+  <!-- DIALOGUE (z-index 20) -->
+  <div id="dlg">
+    <div id="dlgFace">🧙</div>
+    <div id="dlgName">WIZARD ALDRIC</div>
+    <div id="dlgText"></div>
+    <div id="dlgNext">▼</div>
+  </div>
+
+  <!-- QUESTION BOX (z-index 20) -->
+  <div id="qbox">
+    <div id="qFace">💀</div>
+    <div id="qTop">
+      <div id="qEnemyName">SKELETON</div>
+      <div class="qDiff easy" id="qDiff">EASY</div>
+    </div>
+    <div id="qText"></div>
+    <div id="qOpts"></div>
+    <div id="qFb"></div>
+  </div>
+
+  <!-- GEM BANNER (z-index 30) -->
+  <div id="gemBanner"></div>
+
+  <!-- TITLE SCREEN (z-index 80) -->
+  <div id="sTit">
+    <canvas id="cTit" width="800" height="500"></canvas>
+    <div class="titContent">
+      <div class="titGems">💚💙❤️💜</div>
+      <div class="titSub">The</div>
+      <div class="titMain">DRAGON'S</div>
+      <div class="titRed">DUNGEON</div>
+      <div class="titTag">— FRACTION QUEST —</div>
+      <button class="titBtn" id="btnStart">Start Game</button>
+      <div class="titCopy">Primary 5 Foundation Mathematics</div>
+    </div>
+  </div>
+
+  <!-- LEVEL INTRO (z-index 80) -->
+  <div id="sIntro">
+    <canvas id="cIntro" width="800" height="500"></canvas>
+    <div class="liContent">
+      <div class="liNum" id="liNum">LEVEL 1</div>
+      <div class="liName" id="liName">EARTH GEM</div>
+      <div class="liTopic" id="liTopic">Equivalent Fractions</div>
+      <div class="liDesc" id="liDesc"></div>
+      <button class="liBtn" id="liBtn">▶ START LEVEL</button>
+    </div>
+  </div>
+
+  <!-- WIN SCREEN (z-index 90) -->
+  <div id="sWin">
+    <canvas id="cWin" width="800" height="500"></canvas>
+    <div class="winContent">
+      <div class="winTitle">⚔️ DRAGON DEFEATED! ⚔️</div>
+      <div class="winSub">You collected all 4 Elemental Gems!<br>The kingdom is saved!<br>Outstanding work on Fractions!</div>
+      <div class="winGems">💚💙❤️💜</div>
+      <div class="winScore" id="winScore"></div>
+      <button class="winBtn" onclick="location.reload()">▶ PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <!-- FADE (z-index 200) -->
+  <div id="fade"></div>
+
+</div><!-- #G -->
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS SETUP
+// ═══════════════════════════════════════════════════════════
+const cBg  = document.getElementById('cBg').getContext('2d');
+const cSp  = document.getElementById('cSp').getContext('2d');
+const cFx  = document.getElementById('cFx').getContext('2d');
+const cTit = document.getElementById('cTit').getContext('2d');
+const cInt = document.getElementById('cIntro').getContext('2d');
+const cWin = document.getElementById('cWin').getContext('2d');
+[cBg,cSp,cFx,cTit,cInt,cWin].forEach(c => c.imageSmoothingEnabled = false);
+
+// ═══════════════════════════════════════════════════════════
+// FRACTION HTML HELPER
+// ═══════════════════════════════════════════════════════════
+function F(n, d) {
+  return `<span class="F"><span class="n">${n}</span><span class="d">${d}</span></span>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+function shuffle(a){return [...a].sort(()=>Math.random()-0.5);}
+
+// GAME DATA — all 4 levels fully defined
+// ═══════════════════════════════════════════════════════════
+const THEMES = [
+  { floor:'#1d2d12', wall:'#101c08', lit:'#00ff88', torch:'#aaff44', bg:'#090e04', tc:'#00ff88' },
+  { floor:'#0f1e30', wall:'#07101b', lit:'#44aaff', torch:'#4488ff', bg:'#040810', tc:'#44aaff' },
+  { floor:'#2e0f07', wall:'#180500', lit:'#ff6622', torch:'#ff8800', bg:'#100300', tc:'#ff6622' },
+  { floor:'#1c0f2e', wall:'#0e0718', lit:'#bb44ff', torch:'#aa44ff', bg:'#080010', tc:'#bb44ff' },
+];
+const GEM_ICONS  = ['💚','💙','❤️','💜'];
+const GEM_NAMES  = ['EARTH GEM','WATER GEM','FIRE GEM','DARK GEM'];
+const LVL_COLORS = ['#00ff88','#44aaff','#ff7722','#bb44ff'];
+const ENEMY_FACE = ['💀','🦴','🔥','💀'];
+const ENEMY_NAME = ['EARTH SKELETON','WATER BAT-BONE','FIRE SKELETON','DARK SKELETON'];
+
+const LEVELS = [
+  // ─── LEVEL 0 — Equivalent Fractions ─────────────────────────
+  {
+    topic: 'Equivalent Fractions',
+    intro: 'A skeleton guards this dungeon!\nDefeat it by answering\nEquivalent Fraction challenges\nto unlock the Earth Gem.',
+    story: [
+      'Brave adventurer!',
+      'A terrible dragon has stolen\nthe 4 Elemental Gems!',
+      'Without the gems, my sword\nhas no power against the dragon.',
+      'Travel through 4 dungeons,\ndefeat the guardians,\ncollect the gems!',
+      'The EARTH GEM is first.\nA skeleton stands in your way!',
+      'Use your fraction knowledge\nto defeat it. Good luck!',
+    ],
+    winLines: ['The Earth Gem is yours!','The skeleton crumbles to dust!','1 gem collected — 3 more to go!'],
+    questions: [
+      { q: `Which fraction is equivalent\nto ${F(1,2)} ?`,
+        opts: ['2/4','2/3','3/5','1/3'], ans: '2/4', d: 'easy' },
+      { q: `Which fraction is equivalent\nto ${F(2,3)} ?`,
+        opts: ['3/6','4/6','2/6','3/5'], ans: '4/6', d: 'easy' },
+      { q: `Simplify ${F(4,8)} to its\nsimplest form.`,
+        opts: ['1/2','2/4','1/4','3/6'], ans: '1/2', d: 'easy' },
+      { q: `Which fraction is equivalent\nto ${F(3,4)} ?`,
+        opts: ['6/8','6/10','4/6','5/8'], ans: '6/8', d: 'medium' },
+      { q: `Simplify ${F(6,9)} to its\nsimplest form.`,
+        opts: ['2/3','3/4','1/3','2/4'], ans: '2/3', d: 'medium' },
+      { q: `${F(1,3)} = ${F('?',12)}\nWhat is the missing number?`,
+        opts: ['4','3','6','2'], ans: '4', d: 'medium' },
+      { q: `${F(3,4)} = ${F(9,'?')}\nWhat is the missing number?`,
+        opts: ['12','8','16','10'], ans: '12', d: 'hard' },
+      { q: `Which fraction is NOT\nequivalent to ${F(2,5)} ?`,
+        opts: ['4/10','6/15','6/20','8/20'], ans: '6/20', d: 'hard' },
+      { q: `Which fraction is equivalent\nto ${F(1,3)} ?`,
+        opts: ['2/6','2/9','1/6','3/6'], ans: '2/6', d: 'easy' },
+      { q: `Simplify ${F(4,6)} to its\nsimplest form.`,
+        opts: ['2/3','1/2','3/4','2/4'], ans: '2/3', d: 'easy' },
+      { q: `Which fraction is equivalent\nto ${F(3,5)} ?`,
+        opts: ['6/10','6/15','3/10','4/10'], ans: '6/10', d: 'medium' },
+      { q: `Simplify ${F(3,12)} to its\nsimplest form.`,
+        opts: ['1/4','1/3','2/6','1/6'], ans: '1/4', d: 'medium' },
+      { q: `${F(2,3)} = ${F(8,'?')}\nWhat is the missing number?`,
+        opts: ['12','9','6','15'], ans: '12', d: 'medium' },
+      { q: `Simplify ${F(6,8)} to its\nsimplest form.`,
+        opts: ['3/4','2/3','1/2','4/6'], ans: '3/4', d: 'hard' },
+      { q: `${F(5,10)} = ${F('?',2)}\nWhat is the missing number?`,
+        opts: ['1','2','3','4'], ans: '1', d: 'hard' },
+    ],
+  },
+
+  // ─── LEVEL 1 — Comparing Fractions ──────────────────────────
+  {
+    topic: 'Comparing Fractions',
+    intro: 'A bat-skeleton lurks ahead!\nDefeat it by answering\nComparing Fraction challenges\nto unlock the Water Gem.',
+    story: [
+      'The Earth Gem glows on the sword!',
+      'The WATER GEM is hidden\nin the flooded dungeon.',
+      'A bat-skeleton guards this chamber!',
+      'Use your fraction comparing\nskills to defeat it!',
+    ],
+    winLines: ['The Water Gem is yours!','The bat-skeleton flees!','2 gems collected — 2 more to go!'],
+    questions: [
+      { q: `Which fraction is GREATER?\n${F(1,2)}  or  ${F(1,4)}`,
+        opts: ['1/2','1/4','They are equal','Cannot tell'], ans: '1/2', d: 'easy' },
+      { q: `Which fraction is SMALLER?\n${F(3,4)}  or  ${F(2,4)}`,
+        opts: ['2/4','3/4','They are equal','Cannot tell'], ans: '2/4', d: 'easy' },
+      { q: `Compare:  ${F(1,3)}  ___  ${F(1,4)}\nWhich sign fits?`,
+        opts: ['>','<','=','Cannot tell'], ans: '>', d: 'easy' },
+      { q: `Arrange from smallest to greatest:\n${F(1,8)},  ${F(1,4)},  ${F(1,2)}`,
+        opts: ['1/8, 1/4, 1/2','1/4, 1/8, 1/2','1/2, 1/4, 1/8','1/8, 1/2, 1/4'], ans: '1/8, 1/4, 1/2', d: 'medium' },
+      { q: `Compare:  ${F(2,3)}  ___  ${F(3,4)}\nWhich sign fits?`,
+        opts: ['<','>','=','Cannot tell'], ans: '<', d: 'medium' },
+      { q: `Which fraction is GREATEST?\n${F(5,6)},  ${F(3,4)},  ${F(2,3)}`,
+        opts: ['5/6','3/4','2/3','They are equal'], ans: '5/6', d: 'medium' },
+      { q: `Arrange from greatest to smallest:\n${F(5,6)},  ${F(3,4)},  ${F(2,3)}`,
+        opts: ['5/6, 3/4, 2/3','3/4, 5/6, 2/3','2/3, 3/4, 5/6','5/6, 2/3, 3/4'], ans: '5/6, 3/4, 2/3', d: 'hard' },
+      { q: `Compare:  ${F(5,6)}  ___  ${F(7,8)}\nWhich sign fits?`,
+        opts: ['<','>','=','Cannot tell'], ans: '<', d: 'hard' },
+      { q: `Which fraction is GREATER?\n${F(2,3)}  or  ${F(3,5)}`,
+        opts: ['2/3','3/5','They are equal','Cannot tell'], ans: '2/3', d: 'easy' },
+      { q: `Which fraction is SMALLER?\n${F(5,8)}  or  ${F(3,4)}`,
+        opts: ['5/8','3/4','They are equal','Cannot tell'], ans: '5/8', d: 'easy' },
+      { q: `Compare:  ${F(3,4)}  ___  ${F(5,8)}\nWhich sign fits?`,
+        opts: ['>','<','=','Cannot tell'], ans: '>', d: 'medium' },
+      { q: `Arrange from smallest to greatest:\n${F(1,3)},  ${F(1,2)},  ${F(1,4)}`,
+        opts: ['1/4, 1/3, 1/2','1/3, 1/4, 1/2','1/2, 1/3, 1/4','1/4, 1/2, 1/3'], ans: '1/4, 1/3, 1/2', d: 'medium' },
+      { q: `Which fraction is SMALLEST?\n${F(2,3)},  ${F(3,5)},  ${F(5,9)}`,
+        opts: ['5/9','3/5','2/3','They are equal'], ans: '5/9', d: 'hard' },
+      { q: `Compare:  ${F(4,5)}  ___  ${F(7,10)}\nWhich sign fits?`,
+        opts: ['>','<','=','Cannot tell'], ans: '>', d: 'hard' },
+      { q: `Arrange from greatest to smallest:\n${F(3,4)},  ${F(2,3)},  ${F(5,8)}`,
+        opts: ['3/4, 2/3, 5/8','2/3, 3/4, 5/8','5/8, 3/4, 2/3','3/4, 5/8, 2/3'], ans: '3/4, 2/3, 5/8', d: 'hard' },
+    ],
+  },
+
+  // ─── LEVEL 2 — Adding Fractions ─────────────────────────────
+  {
+    topic: 'Adding Fractions',
+    intro: 'A fire skeleton rages!\nDefeat it by answering\nAdding Fraction challenges\nto unlock the Fire Gem.',
+    story: [
+      'Two gems shine on the sword!',
+      'The FIRE GEM burns deep\nin the lava dungeon.',
+      'A fire skeleton guards it!',
+      'Use your adding fraction\nskills to defeat it!',
+    ],
+    winLines: ['The Fire Gem blazes!','The fire skeleton melts away!','3 gems collected — one more to go!'],
+    questions: [
+      { q: `What is  ${F(1,5)} + ${F(2,5)} ?`,
+        opts: ['3/5','3/10','2/5','4/5'], ans: '3/5', d: 'easy' },
+      { q: `What is  ${F(3,8)} + ${F(2,8)} ?`,
+        opts: ['5/8','5/16','4/8','6/8'], ans: '5/8', d: 'easy' },
+      { q: `What is  ${F(4,12)} + ${F(5,12)} ?`,
+        opts: ['9/12','9/24','8/12','10/12'], ans: '9/12', d: 'easy' },
+      { q: `What is  ${F(1,2)} + ${F(1,4)} ?\nFind a common denominator first!`,
+        opts: ['3/4','2/6','2/4','1/4'], ans: '3/4', d: 'medium' },
+      { q: `What is  ${F(1,3)} + ${F(1,6)} ?`,
+        opts: ['3/6','2/9','2/6','1/2'], ans: '3/6', d: 'medium' },
+      { q: `What is  ${F(1,4)} + ${F(3,8)} ?`,
+        opts: ['5/8','4/12','4/8','6/8'], ans: '5/8', d: 'medium' },
+      { q: `What is  ${F(2,3)} + ${F(3,4)} ?`,
+        opts: ['17/12','5/7','5/12','8/12'], ans: '17/12', d: 'hard' },
+      { q: `What is  ${F(5,6)} + ${F(1,4)} ?`,
+        opts: ['13/12','6/10','6/12','7/10'], ans: '13/12', d: 'hard' },
+      { q: `What is  ${F(2,5)} + ${F(1,5)} ?`,
+        opts: ['3/5','3/10','2/5','4/5'], ans: '3/5', d: 'easy' },
+      { q: `What is  ${F(1,6)} + ${F(1,6)} ?`,
+        opts: ['2/6','2/12','1/6','3/6'], ans: '2/6', d: 'easy' },
+      { q: `What is  ${F(1,2)} + ${F(1,6)} ?`,
+        opts: ['4/6','2/8','2/6','3/6'], ans: '4/6', d: 'medium' },
+      { q: `What is  ${F(3,4)} + ${F(1,4)} ?`,
+        opts: ['4/4','4/8','3/4','2/4'], ans: '4/4', d: 'medium' },
+      { q: `What is  ${F(1,3)} + ${F(1,3)} ?`,
+        opts: ['2/3','2/6','1/3','3/3'], ans: '2/3', d: 'medium' },
+      { q: `What is  ${F(2,8)} + ${F(3,8)} ?`,
+        opts: ['5/8','5/16','4/8','6/8'], ans: '5/8', d: 'easy' },
+      { q: `What is  ${F(1,2)} + ${F(1,3)} ?`,
+        opts: ['5/6','2/5','2/6','4/6'], ans: '5/6', d: 'hard' },
+    ],
+  },
+
+  // ─── LEVEL 3 — Subtracting Fractions ────────────────────────
+  {
+    topic: 'Subtracting Fractions',
+    intro: 'The Dark Skeleton awakens!\nDefeat it by answering\nSubtracting Fraction challenges,\nthen face the DRAGON!',
+    story: [
+      'Three gems glow on the sword!',
+      'One final dungeon.\nThe DARK GEM awaits!',
+      'The fearsome Dark Skeleton\nguards this chamber.',
+      'Defeat it — then face\nthe Dragon itself!',
+    ],
+    winLines: ['The Dark Gem is yours!','The Dark Skeleton shatters!','All 4 gems collected!\nNow — face the DRAGON!'],
+    questions: [
+      { q: `What is  ${F(5,7)} − ${F(2,7)} ?`,
+        opts: ['3/7','3/0','4/7','2/7'], ans: '3/7', d: 'easy' },
+      { q: `What is  ${F(7,9)} − ${F(4,9)} ?`,
+        opts: ['3/9','4/9','2/9','11/9'], ans: '3/9', d: 'easy' },
+      { q: `What is  ${F(9,12)} − ${F(3,12)} ?`,
+        opts: ['6/12','6/24','5/12','7/12'], ans: '6/12', d: 'easy' },
+      { q: `What is  ${F(3,4)} − ${F(1,8)} ?`,
+        opts: ['5/8','2/4','6/8','4/8'], ans: '5/8', d: 'medium' },
+      { q: `What is  ${F(5,6)} − ${F(2,3)} ?`,
+        opts: ['1/6','3/3','3/6','1/3'], ans: '1/6', d: 'medium' },
+      { q: `What is  ${F(11,12)} − ${F(2,3)} ?`,
+        opts: ['3/12','9/9','1/4','9/12'], ans: '3/12', d: 'medium' },
+      { q: `What is  ${F(7,8)} − ${F(1,4)} ?\nSimplify your answer.`,
+        opts: ['5/8','6/4','6/8','3/4'], ans: '5/8', d: 'hard' },
+      { q: `What is  ${F(3,4)} − ${F(1,6)} ?\nSimplify your answer.`,
+        opts: ['7/12','2/2','4/12','8/12'], ans: '7/12', d: 'hard' },
+      { q: `What is  ${F(4,5)} − ${F(1,5)} ?`,
+        opts: ['3/5','3/10','2/5','4/5'], ans: '3/5', d: 'easy' },
+      { q: `What is  ${F(6,7)} − ${F(3,7)} ?`,
+        opts: ['3/7','3/14','2/7','4/7'], ans: '3/7', d: 'easy' },
+      { q: `What is  ${F(8,9)} − ${F(2,9)} ?`,
+        opts: ['6/9','6/18','5/9','7/9'], ans: '6/9', d: 'easy' },
+      { q: `What is  ${F(5,6)} − ${F(1,6)} ?`,
+        opts: ['4/6','4/12','3/6','5/6'], ans: '4/6', d: 'easy' },
+      { q: `What is  ${F(3,4)} − ${F(1,2)} ?`,
+        opts: ['1/4','2/2','2/4','1/2'], ans: '1/4', d: 'medium' },
+      { q: `What is  ${F(7,8)} − ${F(3,8)} ?`,
+        opts: ['4/8','4/16','3/8','5/8'], ans: '4/8', d: 'easy' },
+      { q: `What is  ${F(5,6)} − ${F(1,3)} ?`,
+        opts: ['3/6','4/3','2/6','4/6'], ans: '3/6', d: 'medium' },
+    ],
+  },
+];
+
+// ═══════════════════════════════════════════════════════════
+// PIXEL ART — all drawing functions
+// ═══════════════════════════════════════════════════════════
+function r(ctx, x, y, w, h, col) { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); }
+
+function drawDungeon(ctx, th) {
+  ctx.clearRect(0, 0, 800, 500);
+  // Floor tiles
+  for (let row = 1; row < 15; row++) {
+    for (let col = 1; col < 24; col++) {
+      const x = col*32, y = row*32;
+      r(ctx, x, y, 32, 32, th.floor);
+      r(ctx, x, y, 32, 1, 'rgba(0,0,0,0.22)');
+      r(ctx, x, y, 1, 32, 'rgba(0,0,0,0.18)');
+      r(ctx, x+2, y+2, 28, 28, 'rgba(255,255,255,0.025)');
+    }
+  }
+  // Top wall
+  for (let c = 0; c < 25; c++) {
+    r(ctx, c*32, 0, 32, 32, th.wall);
+    r(ctx, c*32, 0, 32, 3, 'rgba(0,0,0,0.5)');
+    if (c>0&&c<24) r(ctx, c*32+3, 5, 26, 22, 'rgba(255,255,255,0.03)');
+  }
+  // Side walls
+  for (let ro = 0; ro < 16; ro++) {
+    r(ctx, 0, ro*32, 32, 32, th.wall);
+    r(ctx, 24*32, ro*32, 32, 32, th.wall);
+    r(ctx, 0, ro*32, 3, 32, 'rgba(0,0,0,0.45)');
+    r(ctx, 24*32+29, ro*32, 3, 32, 'rgba(0,0,0,0.45)');
+  }
+  // Bottom wall
+  for (let c = 0; c < 25; c++) r(ctx, c*32, 14*32, 32, 32, th.wall);
+  // Door arch
+  r(ctx, 12*32, 0, 32, 32, th.floor);
+  r(ctx, 12*32+5, 0, 22, 34, 'rgba(0,0,0,0.75)');
+  r(ctx, 12*32, 0, 5, 32, th.wall);
+  r(ctx, 12*32+27, 0, 5, 32, th.wall);
+  // Torches
+  [[3,3],[21,3],[3,11],[21,11]].forEach(([c,ro]) => {
+    const tx = c*32+13, ty = ro*32+4;
+    r(ctx, tx-2, ty+9, 6, 11, '#3a2000');
+    r(ctx, tx-4, ty+4, 10, 8, '#774400');
+    r(ctx, tx-3, ty, 8, 6, th.torch);
+    r(ctx, tx-1, ty, 4, 3, '#ffffaa');
+  });
+}
+
+function drawTorchFx(ctx, th, t) {
+  [[3,3],[21,3],[3,11],[21,11]].forEach(([c,ro]) => {
+    const tx = c*32+13, ty = ro*32+4;
+    const flick = Math.sin(t*3.1 + c*1.7);
+    const h = 3 + flick*2;
+    ctx.globalAlpha = 0.5 + flick*0.25;
+    r(ctx, tx-4, ty-h, 10, h+2, th.torch);
+    ctx.globalAlpha = 0.3 + flick*0.2;
+    r(ctx, tx-1, ty-h+1, 4, h, '#ffffaa');
+    ctx.globalAlpha = 1;
+    // Glow radius
+    const grd = ctx.createRadialGradient(tx+2, ty+3, 0, tx+2, ty+3, 28+flick*6);
+    grd.addColorStop(0, th.torch.replace(')',',0.12)').replace('rgb','rgba'));
+    grd.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(tx-26, ty-20, 58, 55);
+  });
+}
+
+function drawPlayer(ctx, x, y, fr) {
+  ctx.save(); ctx.translate(x, y);
+  // Shadow
+  r(ctx, -12, 28, 24, 5, 'rgba(0,0,0,0.28)');
+  // Legs with walk animation
+  const lA = fr%2===0 ? 2 : 0, lB = 2-lA;
+  r(ctx, -7, 16+lA, 6, 12, '#5a5a8a'); r(ctx, -7, 26+lA, 7, 4, '#222238'); // left leg + boot
+  r(ctx, 1, 16+lB, 6, 12, '#4a4a7a');  r(ctx, 0, 26+lB, 7, 4, '#222238'); // right leg + boot
+  // Body armour
+  r(ctx, -8, 3, 16, 14, '#8a8aaa');
+  r(ctx, -6, 5, 12, 10, '#6868a0');
+  r(ctx, -4, 7, 8, 5, '#aaaacc');      // chest plate
+  r(ctx, -1, 8, 2, 3, '#FFD700');      // gold centre
+  // Pauldrons
+  r(ctx, -12, 3, 6, 5, '#aaaacc'); r(ctx, 6, 3, 6, 5, '#aaaacc');
+  // Arms
+  r(ctx, -12, 7, 5, 9, '#8a8aaa'); r(ctx, 7, 7, 5, 9, '#8a8aaa');
+  // Sword arm
+  r(ctx, 10, 3, 4, 20, '#ccccff');     // blade
+  r(ctx, 8, 13, 10, 3, '#886600');     // guard
+  r(ctx, 11, 0, 2, 5, '#dddde8');      // pommel
+  // Helmet
+  r(ctx, -7, -11, 14, 12, '#8a8aaa');
+  r(ctx, -5, -9, 10, 9, '#aaaacc');
+  r(ctx, -4, -6, 8, 5, '#555577');     // visor slit
+  r(ctx, -7, -11, 14, 2, '#FFD700');   // gold brim
+  r(ctx, -2, -14, 4, 5, '#8a8aaa');    // crest
+  r(ctx, -1, -14, 2, 4, '#ff4444');    // red plume
+  ctx.restore();
+}
+
+function drawSkeleton(ctx, x, y, fr) {
+  ctx.save(); ctx.translate(x, y);
+  r(ctx, -10, 28, 20, 5, 'rgba(0,0,0,0.25)');
+  // Legs
+  const lA = fr%2===0 ? 1 : 0;
+  r(ctx, -7, 14+lA, 5, 14, '#ccccbb'); r(ctx, 2, 14+(1-lA), 5, 14, '#ccccbb');
+  r(ctx, -8, 26+lA, 7, 3, '#bbbbaa'); r(ctx, 1, 26+(1-lA), 7, 3, '#bbbbaa');
+  // Pelvis
+  r(ctx, -7, 13, 14, 3, '#bbbbaa');
+  // Ribcage
+  r(ctx, -6, 2, 12, 13, '#ddddcc');
+  for (let i=0;i<4;i++) r(ctx, -5, 4+i*3, 10, 1, '#aaaaaa'); // ribs
+  r(ctx, -1, 2, 2, 13, '#bbbbaa'); // spine
+  // Arms with swing
+  const aS = fr%2===0 ? -2 : 2;
+  r(ctx, -12, 4+aS, 6, 13, '#ccccbb');
+  r(ctx, 6, 4-aS, 6, 13, '#ccccbb');
+  r(ctx, -14, 15+aS, 6, 4, '#bbbbaa'); // hand
+  r(ctx, 8, 15-aS, 6, 4, '#bbbbaa');
+  // Head skull
+  r(ctx, -7, -12, 14, 14, '#eeeecc');
+  r(ctx, -9, -8, 3, 6, '#eeeecc'); r(ctx, 6, -8, 3, 6, '#eeeecc'); // cheekbones
+  // Eyes glow
+  r(ctx, -5, -10, 4, 5, '#001500');
+  r(ctx, 1, -10, 4, 5, '#001500');
+  r(ctx, -4, -9, 3, 4, '#00bb00');
+  r(ctx, 1, -9, 3, 4, '#00bb00');
+  r(ctx, -3, -8, 2, 2, '#00ff88'); // pupils
+  r(ctx, 2, -8, 2, 2, '#00ff88');
+  // Teeth
+  r(ctx, -6, 1, 12, 3, '#eeeecc');
+  for (let i=0;i<5;i++) r(ctx, -5+i*2, 1, 1, 3, '#222');
+  // Scythe handle
+  r(ctx, -18, -16, 3, 34, '#554400');
+  // Scythe blade
+  ctx.fillStyle = '#aabbcc';
+  ctx.beginPath();
+  ctx.moveTo(-18,-16); ctx.lineTo(-4,-22); ctx.lineTo(-10,-8); ctx.closePath();
+  ctx.fill();
+  r(ctx, -14, -20, 6, 2, '#ccddee'); // edge highlight
+  ctx.restore();
+}
+
+function drawWizard(ctx, x, y) {
+  ctx.save(); ctx.translate(x, y);
+  r(ctx, -10, 28, 20, 4, 'rgba(0,0,0,0.25)');
+  // Robe
+  r(ctx, -9, 3, 18, 28, '#2e1f5e');
+  r(ctx, -7, 5, 14, 24, '#3d2a7a');
+  r(ctx, -5, 8, 4, 3, '#FFD700'); r(ctx, 3, 14, 4, 3, '#FFD700'); r(ctx, -3, 20, 3, 2, '#FFD700');
+  // Head
+  r(ctx, -6, -10, 12, 13, '#f0c8a0');
+  // Beard
+  r(ctx, -7, 1, 14, 12, '#eeeedc');
+  r(ctx, -5, 4, 10, 10, '#ddddcc');
+  for (let i=0;i<4;i++) r(ctx, -4+i*3, 8, 2, 5, '#ccccbb'); // beard strands
+  // Eyes
+  r(ctx, -4, -7, 3, 1, '#888877'); r(ctx, 1, -7, 3, 1, '#888877'); // brows
+  r(ctx, -3, -5, 2, 2, '#333322'); r(ctx, 1, -5, 2, 2, '#333322');
+  // Nose
+  r(ctx, -1, -3, 2, 2, '#cc9966');
+  // Hat
+  r(ctx, -7, -18, 14, 9, '#2e1f5e');
+  r(ctx, -4, -24, 8, 8, '#2e1f5e');
+  r(ctx, -8, -9, 16, 2, '#FFD700'); // brim gold
+  r(ctx, -1, -23, 2, 4, '#FFD700'); r(ctx, -2, -22, 4, 2, '#FFD700'); // star
+  // Arms
+  r(ctx, -13, 3, 6, 14, '#3d2a7a');
+  r(ctx, 7, 3, 6, 14, '#3d2a7a');
+  // Staff
+  r(ctx, 12, -6, 4, 38, '#7a5522');
+  r(ctx, 9, -10, 10, 8, '#88ccff');
+  r(ctx, 11, -9, 6, 5, '#ffffff');
+  r(ctx, 12, -12, 4, 4, '#FFD700');
+  ctx.restore();
+}
+
+function drawDragon(ctx, x, y, breathLen) {
+  ctx.save(); ctx.translate(x, y);
+  // Wings
+  ctx.fillStyle = 'rgba(150,15,0,0.82)';
+  ctx.beginPath(); ctx.moveTo(-10,2); ctx.lineTo(-48,-22); ctx.lineTo(-36,20); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(30,2); ctx.lineTo(68,-22); ctx.lineTo(56,20); ctx.closePath(); ctx.fill();
+  // Wing membrane detail
+  ctx.strokeStyle = 'rgba(200,20,0,0.4)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(-10,2); ctx.lineTo(-44,-18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(30,2); ctx.lineTo(64,-18); ctx.stroke();
+  // Tail
+  r(ctx, -28, 10, 20, 8, '#991400');
+  r(ctx, -36, 14, 10, 5, '#881200');
+  r(ctx, -42, 17, 7, 4, '#771000');
+  // Body
+  r(ctx, -12, -2, 42, 28, '#aa1600');
+  r(ctx, -10, 0, 38, 22, '#cc2200');
+  // Scale pattern
+  for (let sr=0;sr<3;sr++) for (let sc=0;sc<5;sc++) r(ctx, -8+sc*8, 2+sr*6, 6, 5, '#881400');
+  // Neck
+  r(ctx, 8, -24, 14, 26, '#aa1600');
+  // Head
+  r(ctx, 4, -28, 22, 22, '#cc2200');
+  // Snout
+  r(ctx, 24, -22, 16, 14, '#dd3300');
+  r(ctx, 26, -18, 4, 4, '#551100'); r(ctx, 32, -18, 4, 4, '#551100'); // nostrils
+  // Teeth
+  r(ctx, 24, -10, 3, 5, '#eeeecc'); r(ctx, 28, -10, 3, 5, '#eeeecc'); r(ctx, 32, -10, 3, 5, '#eeeecc');
+  // Eyes
+  r(ctx, 6, -26, 7, 7, '#ffff00'); r(ctx, 16, -26, 7, 7, '#ffff00');
+  r(ctx, 8, -24, 4, 5, '#000'); r(ctx, 18, -24, 4, 5, '#000');
+  r(ctx, 9, -23, 2, 3, '#ff2200'); r(ctx, 19, -23, 2, 3, '#ff2200'); // pupil slit
+  // Horns
+  r(ctx, 4, -34, 5, 10, '#882200'); r(ctx, 16, -34, 5, 10, '#882200');
+  r(ctx, 3, -36, 4, 5, '#662000'); r(ctx, 17, -36, 4, 5, '#662000');
+  // Legs
+  r(ctx, -10, 24, 10, 14, '#aa1600'); r(ctx, 20, 24, 10, 14, '#aa1600');
+  r(ctx, -12, 36, 13, 5, '#881400'); r(ctx, 18, 36, 13, 5, '#881400');
+  // Claws
+  for (let cl=0;cl<3;cl++) { r(ctx, -12+cl*4, 40, 2, 5, '#551100'); r(ctx, 18+cl*4, 40, 2, 5, '#551100'); }
+  // Fire breath
+  if (breathLen > 0) {
+    const grd = ctx.createLinearGradient(38, -18, 38+breathLen, -18);
+    grd.addColorStop(0, 'rgba(255,100,0,0.95)');
+    grd.addColorStop(0.4, 'rgba(255,200,0,0.8)');
+    grd.addColorStop(1, 'rgba(255,50,0,0)');
+    ctx.fillStyle = grd; ctx.fillRect(38, -24, breathLen, 16);
+    ctx.fillStyle = 'rgba(255,255,150,0.5)'; ctx.fillRect(38, -20, breathLen*0.55, 8);
+  }
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
+// TITLE SCREEN
+// ═══════════════════════════════════════════════════════════
+(function drawTitleScreen() {
+  const c = cTit;
+  r(c, 0, 0, 800, 500, '#08060f');
+  // Grid
+  c.strokeStyle = 'rgba(70,30,0,0.1)'; c.lineWidth = 1;
+  for (let x=0;x<800;x+=32) { c.beginPath();c.moveTo(x,0);c.lineTo(x,500);c.stroke(); }
+  for (let y=0;y<500;y+=32) { c.beginPath();c.moveTo(0,y);c.lineTo(800,y);c.stroke(); }
+  // Dragon silhouette (dark bg)
+  c.globalAlpha = 0.2;
+  drawDragon(c, 560, 180, 0);
+  c.globalAlpha = 1;
+  // Sword with gems
+  r(c, 70, 48, 220, 8, '#6858b8');
+  r(c, 65, 52, 16, 20, '#aaa0cc');
+  r(c, 79, 57, 9, 6, '#664400');
+  // Gem inserts on sword
+  [['#00ff88',108],['#44aaff',138],['#ff4422',168],['#aa44ff',198]].forEach(([col,gx]) => {
+    r(c, gx, 40, 18, 18, col);
+    r(c, gx+3, 42, 7, 5, 'rgba(255,255,255,0.4)');
+  });
+  // Flame bottom
+  const fc = ['#FF3300','#FF5500','#FF7700','#FFAA00'];
+  for (let x=0;x<800;x+=18) {
+    const fh = 32 + Math.sin(x*0.06)*16;
+    r(c, x, 500-fh, 16, fh, fc[Math.floor(x/18)%4]);
+  }
+  // Skull decorations
+  [45,690].forEach(sx => {
+    c.globalAlpha = 0.14;
+    r(c, sx, 170, 26, 22, '#ddddcc'); r(c, sx+4, 192, 8, 8, '#ddddcc'); r(c, sx+14, 192, 8, 8, '#ddddcc');
+    r(c, sx+5, 174, 6, 8, '#004400'); r(c, sx+15, 174, 6, 8, '#004400');
+    c.globalAlpha = 1;
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════
+// AUDIO ENGINE — 3-layer chiptune BGM + SFX
+// ═══════════════════════════════════════════════════════════
+let _ac = null;
+function getAC() {
+  if (!_ac) _ac = new (window.AudioContext || window.webkitAudioContext)();
+  return _ac;
+}
+function playNote(freq, type, dur, vol, when) {
+  try {
+    const ac = getAC();
+    const o = ac.createOscillator(), g = ac.createGain();
+    const t = when || ac.currentTime;
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  } catch(e) {}
+}
+function playNoise(dur, vol, when) {
+  try {
+    const ac = getAC();
+    const buf = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/d.length, 2);
+    const s = ac.createBufferSource(), g = ac.createGain();
+    s.buffer = buf; g.gain.value = vol;
+    s.connect(g); g.connect(ac.destination);
+    s.start(when || ac.currentTime);
+  } catch(e) {}
+}
+
+function startBGM() { /* music removed — SFX only */ }
+
+// SFX
+function sfxCorrect() {
+  [523,659,784,1047].forEach((f,i) => playNote(f,'sine',0.22,0.1, getAC().currentTime+i*0.09));
+}
+function sfxWrong() {
+  playNote(200,'sawtooth',0.14,0.1);
+  playNote(180,'sawtooth',0.14,0.08, getAC().currentTime+0.14);
+}
+function sfxGem() {
+  [784,880,1047,1175,1568].forEach((f,i) =>
+    playNote(f,'triangle',0.25,0.12, getAC().currentTime+i*0.1));
+}
+function sfxWin() {
+  const ns = [523,659,784,659,784,880,1047,880,1047,1175,1568];
+  ns.forEach((f,i) => playNote(f,'sine',0.3,0.12, getAC().currentTime+i*0.12));
+}
+
+// ═══════════════════════════════════════════════════════════
+// GAME STATE  — single source of truth
+// ═══════════════════════════════════════════════════════════
+const GS = {
+  phase: 'title',          // title | levelIntro | dungeon | question | levelWin | win
+  level: 0,                // 0–3
+  qIdx:  0,                // index into current level's questions
+  gems:  0,                // gems collected (0–4)
+  pX: 400, pY: 440,        // player position
+  pTX: 400, pTY: 440,      // player target
+  eX: 400, eY: 140,        // enemy position
+  animT: 0,                // animation timer (ms)
+  torchT: 0,               // torch flicker timer
+  frameT: 0,               // last RAF timestamp
+  correctFirst: 0,         // questions answered correctly on first try
+  totalQ: 0,               // total questions answered
+  qAnswered: false,        // has current question been answered correctly?
+};
+
+// ═══════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ═══════════════════════════════════════════════════════════
+function loop(ts) {
+  const dt = Math.min(ts - GS.frameT, 50);
+  GS.frameT = ts;
+  GS.animT += dt;
+  GS.torchT += dt * 0.001;
+
+  if (GS.phase === 'dungeon' || GS.phase === 'question') {
+    renderDungeon(dt);
+  }
+  requestAnimationFrame(loop);
+}
+
+function renderDungeon(dt) {
+  const th = THEMES[GS.level];
+  drawDungeon(cBg, th);
+
+  // Torch FX
+  cFx.clearRect(0, 0, 800, 500);
+  drawTorchFx(cFx, th, GS.torchT);
+
+  // Sprites
+  cSp.clearRect(0, 0, 800, 500);
+
+  // Smooth player walk toward target
+  if (GS.phase === 'dungeon') {
+    const dx = GS.pTX - GS.pX, dy = GS.pTY - GS.pY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > 1.5) {
+      GS.pX += (dx/dist) * Math.min(dist, 2.5);
+      GS.pY += (dy/dist) * Math.min(dist, 2.5);
+    } else {
+      GS.pX = GS.pTX; GS.pY = GS.pTY;
+    }
+  }
+
+  // Draw enemy (skeleton)
+  const ef = Math.floor(GS.animT / 320) % 2;
+  drawSkeleton(cSp, GS.eX, GS.eY, ef);
+
+  // Draw player
+  const pf = GS.phase === 'dungeon' ? Math.floor(GS.animT / 180) % 4 : 0;
+  drawPlayer(cSp, Math.round(GS.pX), Math.round(GS.pY), pf);
+}
+
+// ═══════════════════════════════════════════════════════════
+// HUD
+// ═══════════════════════════════════════════════════════════
+function refreshHUD() {
+  for (let i = 0; i < 4; i++) {
+    const el = document.getElementById('g'+i);
+    el.textContent = i < GS.gems ? GEM_ICONS[i] : '';
+    el.classList.toggle('lit', i < GS.gems);
+  }
+  const showing = GS.phase==='dungeon' || GS.phase==='question' || GS.phase==='levelWin';
+  document.getElementById('hud').style.display = showing ? '' : 'none';
+  if (showing) {
+    document.getElementById('hudLevel').innerHTML =
+      `LVL ${GS.level+1} &nbsp;`+
+      `<span style="color:${LVL_COLORS[GS.level]};font-size:6px">${GEM_NAMES[GS.level]}</span>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// SCREEN TRANSITIONS
+// ═══════════════════════════════════════════════════════════
+function fadeOut(cb) {
+  const el = document.getElementById('fade');
+  el.style.transition = 'opacity 0.3s';
+  el.style.opacity = 1;
+  setTimeout(() => { cb(); el.style.opacity = 0; }, 320);
+}
+
+function hideAllScreens() {
+  document.getElementById('sTit').style.display   = 'none';
+  document.getElementById('sIntro').style.display = 'none';
+  document.getElementById('sWin').style.display   = 'none';
+  document.getElementById('dlg').style.display    = 'none';
+  document.getElementById('qbox').style.display   = 'none';
+}
+
+// ═══════════════════════════════════════════════════════════
+// DIALOGUE
+// ═══════════════════════════════════════════════════════════
+let _dlgLines = [], _dlgIdx = 0, _dlgCB = null;
+
+function startDialogue(lines, face, name, cb) {
+  _dlgLines = lines; _dlgIdx = 0; _dlgCB = cb;
+  document.getElementById('dlgFace').textContent = face;
+  document.getElementById('dlgName').textContent = name;
+  document.getElementById('dlg').style.display = 'block';
+  document.getElementById('qbox').style.display = 'none';
+  advanceDlg();
+}
+
+function advanceDlg() {
+  if (_dlgIdx >= _dlgLines.length) {
+    document.getElementById('dlg').style.display = 'none';
+    if (_dlgCB) { const cb = _dlgCB; _dlgCB = null; cb(); }
+    return;
+  }
+  document.getElementById('dlgText').innerHTML =
+    _dlgLines[_dlgIdx++].replace(/\n/g, '<br>');
+}
+
+document.getElementById('dlg').addEventListener('click', advanceDlg);
+
+// ═══════════════════════════════════════════════════════════
+// TITLE → START
+// ═══════════════════════════════════════════════════════════
+document.getElementById('btnStart').addEventListener('click', () => {
+  startBGM();
+  fadeOut(() => {
+    hideAllScreens();
+    GS.level = 0;
+    // Prepare dungeon bg so it's visible during story
+    const th = THEMES[0];
+    drawDungeon(cBg, th);
+    cSp.clearRect(0, 0, 800, 500);
+    drawWizard(cSp, 280, 300);
+    drawPlayer(cSp, 440, 320, 0);
+    document.getElementById('hud').style.display = '';
+    refreshHUD();
+    GS.phase = 'dialogue';
+    startDialogue(LEVELS[0].story, '🧙', 'WIZARD ALDRIC', () => {
+      showLevelIntro();
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// LEVEL INTRO SCREEN
+// ═══════════════════════════════════════════════════════════
+function showLevelIntro() {
+  fadeOut(() => {
+    hideAllScreens();
+    GS.phase = 'levelIntro';
+    const lv  = LEVELS[GS.level];
+    const col = LVL_COLORS[GS.level];
+    const th  = THEMES[GS.level];
+
+    // Draw intro bg
+    cInt.fillStyle = th.bg; cInt.fillRect(0,0,800,500);
+    for (let c=0;c<25;c++) for (let ro=0;ro<16;ro++) {
+      cInt.fillStyle='rgba(255,255,255,0.015)';cInt.fillRect(c*32,ro*32,31,31);
+    }
+    // Draw skeleton preview (centre-top)
+    drawSkeleton(cInt, 400, 200, 0);
+    // Colour splash behind skeleton
+    cInt.globalAlpha = 0.12;
+    cInt.fillStyle = col;
+    cInt.beginPath(); cInt.arc(400, 175, 80, 0, Math.PI*2); cInt.fill();
+    cInt.globalAlpha = 1;
+
+    document.getElementById('liNum').textContent   = `LEVEL ${GS.level+1} OF 4`;
+    document.getElementById('liName').textContent  = GEM_NAMES[GS.level];
+    document.getElementById('liName').style.color  = col;
+    document.getElementById('liTopic').innerHTML   =
+      `<span style="color:${col}">${lv.topic}</span>`;
+    document.getElementById('liDesc').innerHTML    = lv.intro.replace(/\n/g,'<br>');
+
+    document.getElementById('sIntro').style.display = 'flex';
+    document.getElementById('hud').style.display = '';
+    refreshHUD();
+  });
+}
+
+document.getElementById('liBtn').addEventListener('click', () => {
+  fadeOut(() => {
+    document.getElementById('sIntro').style.display = 'none';
+    startDungeon();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
+// DUNGEON
+// ═══════════════════════════════════════════════════════════
+function startDungeon() {
+  GS.phase = 'dungeon';
+  // Pick 8 random questions from pool
+  const lv = LEVELS[GS.level];
+  lv._qs = shuffle(lv.questions).slice(0, 8);
+  GS.qIdx  = 0;
+  GS.pX    = 400; GS.pY   = 450;
+  GS.pTX   = 400; GS.pTY  = 450;
+  GS.eX    = 400; GS.eY   = 140;
+  document.getElementById('dlg').style.display  = 'none';
+  document.getElementById('qbox').style.display = 'none';
+  refreshHUD();
+
+  // After short pause, walk player up toward enemy then show Q
+  setTimeout(() => {
+    GS.pTY = 310;
+    setTimeout(() => askQuestion(), 1400);
+  }, 400);
+}
+
+// ═══════════════════════════════════════════════════════════
+// QUESTIONS  — the critical section, very explicit state
+// ═══════════════════════════════════════════════════════════
+function askQuestion() {
+  const lv = LEVELS[GS.level];
+
+  // All questions done for this level
+  const qs = lv._qs || lv.questions;
+  if (GS.qIdx >= qs.length) {
+    doLevelWin();
+    return;
+  }
+
+  GS.phase = 'question';
+  GS.qAnswered = false;
+
+  const q = qs[GS.qIdx];
+
+  // Enemy portrait
+  document.getElementById('qFace').textContent = ENEMY_FACE[GS.level];
+  document.getElementById('qEnemyName').textContent = ENEMY_NAME[GS.level];
+
+  // Difficulty badge
+  const diffEl = document.getElementById('qDiff');
+  diffEl.textContent = q.d.toUpperCase();
+  diffEl.className = 'qDiff ' + q.d;
+
+  // Question text (supports HTML fractions from F())
+  document.getElementById('qText').innerHTML = q.q.replace(/\n/g, '<br>');
+
+  // Clear feedback
+  document.getElementById('qFb').innerHTML = '';
+
+  // Build answer buttons — shuffled
+  const shuffled = [...q.opts].sort(() => Math.random() - 0.5);
+  const og = document.getElementById('qOpts');
+  og.innerHTML = '';
+
+  shuffled.forEach(opt => {
+    const btn = document.createElement('button');
+    btn.className = 'qBtn';
+    btn.innerHTML = renderOpt(opt);
+
+    btn.addEventListener('click', () => {
+      // Ignore clicks if already answered correctly, or this button already wrong
+      if (GS.qAnswered) return;
+      if (btn.classList.contains('wrong')) return;
+
+      if (opt === q.ans) {
+        // ── CORRECT ──
+        GS.qAnswered = true;
+
+        // Disable ALL buttons immediately
+        og.querySelectorAll('.qBtn').forEach(b => {
+          b.disabled = true;
+          b.classList.remove('wrong'); // clean up any wrong ones
+        });
+        btn.classList.add('correct');
+        document.getElementById('qFb').innerHTML =
+          '<span style="color:#00FF88">✔ Correct! Well done!</span>';
+        sfxCorrect();
+
+        // Advance after 1.6s
+        setTimeout(() => {
+          document.getElementById('qbox').style.display = 'none';
+          GS.qIdx++;
+          GS.phase = 'dungeon';
+          // Walk player a little closer
+          GS.pTY = Math.max(GS.pTY - 22, 200);
+          setTimeout(() => askQuestion(), 700);
+        }, 1600);
+
+      } else {
+        // ── WRONG ──
+        btn.classList.add('wrong');
+        btn.disabled = true;
+        document.getElementById('qFb').innerHTML =
+          '<span style="color:#FF4444">✘ Not quite — try another answer!</span>';
+        sfxWrong();
+
+        // Clear feedback message after 1.2s (buttons stay crossed out)
+        setTimeout(() => {
+          if (!GS.qAnswered)
+            document.getElementById('qFb').innerHTML = '';
+        }, 1200);
+      }
+    });
+
+    og.appendChild(btn);
+  });
+
+  document.getElementById('qbox').style.display = 'block';
+}
+
+// Render an option string — convert N/D to stacked fraction HTML
+function renderOpt(opt) {
+  // Single fraction: "3/4"
+  const singleFrac = opt.match(/^(\d+)\/(\d+)$/);
+  if (singleFrac) {
+    return `<span class="F"><span class="n">${singleFrac[1]}</span><span class="d">${singleFrac[2]}</span></span>`;
+  }
+  // Sequence: "1/8, 1/4, 1/2"
+  if (opt.includes(',')) {
+    return opt.split(',').map(p => {
+      const t = p.trim();
+      const m = t.match(/^(\d+)\/(\d+)$/);
+      return m
+        ? `<span class="F" style="color:inherit"><span class="n">${m[1]}</span><span class="d">${m[2]}</span></span>`
+        : t;
+    }).join('<span style="margin:0 4px; font-size:10px">,</span>');
+  }
+  // Plain text (>, <, =, numbers, etc.)
+  return opt;
+}
+
+// ═══════════════════════════════════════════════════════════
+// LEVEL WIN
+// ═══════════════════════════════════════════════════════════
+function doLevelWin() {
+  GS.phase = 'levelWin';
+  GS.gems++;
+  refreshHUD();
+  sfxGem();
+
+  document.getElementById('qbox').style.display = 'none';
+
+  // Flash gem banner
+  const banner = document.getElementById('gemBanner');
+  banner.textContent = `${GEM_ICONS[GS.gems-1]} ${GEM_NAMES[GS.gems-1]} COLLECTED!`;
+  banner.style.display = 'block';
+  banner.style.animation = 'bannerIn 0.4s ease forwards';
+  setTimeout(() => {
+    banner.style.animation = 'bannerOut 0.5s ease forwards';
+    setTimeout(() => { banner.style.display = 'none'; }, 500);
+  }, 2000);
+
+  // Show win dialogue
+  setTimeout(() => {
+    const lv = LEVELS[GS.level];
+    startDialogue(lv.winLines, '⚔️', 'VICTORY!', () => {
+      GS.level++;
+      if (GS.level >= LEVELS.length) {
+        doWin();
+      } else {
+        // Story for next level
+        const th = THEMES[GS.level];
+        drawDungeon(cBg, th);
+        cSp.clearRect(0, 0, 800, 500);
+        drawWizard(cSp, 280, 300);
+        drawPlayer(cSp, 440, 320, 0);
+        startDialogue(LEVELS[GS.level].story, '🧙', 'WIZARD ALDRIC', () => {
+          showLevelIntro();
+        });
+      }
+    });
+  }, 800);
+}
+
+// ═══════════════════════════════════════════════════════════
+// WIN SCREEN
+// ═══════════════════════════════════════════════════════════
+function doWin() {
+  sfxWin();
+  fadeOut(() => {
+    hideAllScreens();
+    GS.phase = 'win';
+
+    // Win canvas bg
+    cWin.fillStyle = '#06040e'; cWin.fillRect(0,0,800,500);
+    // Stars
+    for (let i=0;i<100;i++) {
+      const sx=(i*97+23)%796+2, sy=(i*53+17)%496+2;
+      cWin.fillStyle=`rgba(255,220,100,${0.15+Math.random()*0.45})`;
+      cWin.fillRect(sx,sy,Math.random()>0.7?2:1,Math.random()>0.7?2:1);
+    }
+    // Defeated dragon (smaller, off to side)
+    drawDragon(cWin, 340, 170, 3);
+    // Player standing victorious
+    drawPlayer(cWin, 560, 300, 0);
+    // Gems glowing
+    const gc = ['#00ff88','#44aaff','#ff6622','#bb44ff'];
+    gc.forEach((col,i) => {
+      cWin.fillStyle = col; cWin.globalAlpha = 0.8;
+      cWin.beginPath(); cWin.arc(200+i*60, 400, 18, 0, Math.PI*2); cWin.fill();
+      cWin.globalAlpha=0.4; cWin.arc(200+i*60,400,28,0,Math.PI*2); cWin.fill();
+      cWin.globalAlpha = 1;
+    });
+
+    document.getElementById('winScore').textContent =
+      `${GS.correctFirst} / 32 answered correctly on first try!`;
+    document.getElementById('sWin').style.display = 'flex';
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════════
+// Resume AudioContext on first user interaction
+document.getElementById('G').addEventListener('click', () => {
+  try { getAC().resume(); } catch(e) {}
+}, { once: true });
+
+// Kick off animation loop
+requestAnimationFrame(ts => { GS.frameT = ts; requestAnimationFrame(loop); });
+</script>
+</body>
+</html>
